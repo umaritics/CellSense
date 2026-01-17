@@ -15,8 +15,8 @@ public class SoundManager {
     static {
         // Name shown in UI  ->  File name in resources
         SOUND_FILES.put("Classic Alarm", "/alarm.mp3");
-        SOUND_FILES.put("Gentle Chime",  "/chime.mp3"); // You need to add this file
-        SOUND_FILES.put("Future Alert",  "/future.mp3"); // You need to add this file
+        SOUND_FILES.put("Gentle Chime",  "/chime.mp3");
+        SOUND_FILES.put("Future Alert",  "/future.mp3");
         SOUND_FILES.put("System Beep",   "beep");       // Always works
     }
 
@@ -85,7 +85,7 @@ public class SoundManager {
                             currentClip.stop();
                         }
                     }
-                }, 5000); //milliseconds
+                }, 3000); //milliseconds
             }
         } catch (Exception e) {
             playSystemBeep();
