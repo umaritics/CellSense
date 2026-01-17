@@ -9,8 +9,10 @@ public class PreferenceManager {
     private static final String KEY_ALARM_ACTIVE = "alarm_active";
     private static final String KEY_MAX_LIMIT = "max_limit";
     private static final String KEY_MIN_LIMIT = "min_limit";
-    private static final String KEY_MAX_SOUND = "max_sound"; // NEW
-    private static final String KEY_MIN_SOUND = "min_sound"; // NEW
+    private static final String KEY_MAX_SOUND = "max_sound";
+    private static final String KEY_MIN_SOUND = "min_sound";
+    private static final String KEY_MAX_LOOP = "max_loop";
+    private static final String KEY_MIN_LOOP = "min_loop";
 
     // --- ALARM ACTIVE ---
     public static boolean isAlarmActive() {
@@ -49,5 +51,19 @@ public class PreferenceManager {
     }
     public static void setMinSound(String soundName) {
         prefs.put(KEY_MIN_SOUND, soundName);
+    }
+    // --- LOOP PREFERENCES ---
+    public static boolean isMaxLoop() {
+        return prefs.getBoolean(KEY_MAX_LOOP, true); // Default: Loop ON
+    }
+    public static void setMaxLoop(boolean loop) {
+        prefs.putBoolean(KEY_MAX_LOOP, loop);
+    }
+
+    public static boolean isMinLoop() {
+        return prefs.getBoolean(KEY_MIN_LOOP, true); // Default: Loop ON
+    }
+    public static void setMinLoop(boolean loop) {
+        prefs.putBoolean(KEY_MIN_LOOP, loop);
     }
 }
