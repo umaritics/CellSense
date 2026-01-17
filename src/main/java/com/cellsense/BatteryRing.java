@@ -9,7 +9,7 @@ import javafx.scene.effect.DropShadow;
 import javafx.scene.layout.StackPane;
 import javafx.scene.paint.Color;
 import javafx.scene.shape.Arc;
-import javafx.scene.shape.Circle;
+import javafx.scene.shape.StrokeLineCap;
 import javafx.scene.shape.StrokeType;
 import javafx.util.Duration;
 
@@ -20,12 +20,18 @@ public class BatteryRing extends StackPane {
     private double currentDisplayValue = 0;
 
     public BatteryRing() {
-        // 1. Background Track
-        Circle track = new Circle(90);
+        // 1. Background Track (Changed from Circle to Arc for perfect alignment)
+        Arc track = new Arc();
+        track.setRadiusX(90);
+        track.setRadiusY(90);
+        track.setStartAngle(90);
+        track.setLength(360); // Full circle
+        track.setType(javafx.scene.shape.ArcType.OPEN);
         track.setFill(Color.TRANSPARENT);
         track.setStroke(Color.web("#21262d")); // Dark Grey
         track.setStrokeWidth(18);
-        track.setStrokeType(StrokeType.CENTERED); // Now this works
+        track.setStrokeType(StrokeType.CENTERED);
+        track.setStrokeLineCap(StrokeLineCap.BUTT); // Flat ends for track
 
         // 2. Progress Arc
         progressArc = new Arc();
@@ -37,8 +43,8 @@ public class BatteryRing extends StackPane {
         progressArc.setFill(Color.TRANSPARENT);
         progressArc.setStroke(Color.web("#2f81f7"));
         progressArc.setStrokeWidth(18);
-        progressArc.setStrokeLineCap(javafx.scene.shape.StrokeLineCap.ROUND);
-        progressArc.setStrokeType(StrokeType.CENTERED); // Now this works
+        progressArc.setStrokeType(StrokeType.CENTERED);
+        progressArc.setStrokeLineCap(StrokeLineCap.ROUND); // Rounded ends
 
         // Add a glow effect
         progressArc.setEffect(new DropShadow(15, Color.web("#2f81f7", 0.4)));
@@ -51,6 +57,7 @@ public class BatteryRing extends StackPane {
         statusLabel.setStyle("-fx-font-size: 14px; -fx-text-fill: #8b949e;");
         statusLabel.setTranslateY(45);
 
+        // Ensure everything is centered
         this.getChildren().addAll(track, progressArc, percentageLabel, statusLabel);
         this.setAlignment(Pos.CENTER);
     }
@@ -60,7 +67,7 @@ public class BatteryRing extends StackPane {
 
         if (isPlugged) {
             progressArc.setStroke(Color.web("#2ea043")); // Green
-            progressArc.setEffect(new DropShadow(20, Color.web("#2ea043", 0.5))); // Green Glow
+            progressArc.setEffect(new DropShadow(20, Color.web("#2ea043", 0.5)));
             statusLabel.setText("⚡ Charging");
             statusLabel.setStyle("-fx-text-fill: #2ea043; -fx-font-size: 14px;");
         } else {
