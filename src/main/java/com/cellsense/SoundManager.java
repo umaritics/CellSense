@@ -5,115 +5,106 @@ import java.net.URL;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
+import java.util.Timer;
+import java.util.TimerTask;
 
 public class SoundManager {
     private static final Map<String, String> SOUND_FILES = new HashMap<>();
     private static AudioClip currentClip;
     private static boolean isAlarmPlaying = false;
 
-    // 1. REGISTER SOUNDS HERE
+    // NEW: Protects the preview from being killed by the battery checker
+    private static boolean isPreviewing = false;
+    private static Timer previewTimer;
+
     static {
-        // Name shown in UI  ->  File name in resources
         SOUND_FILES.put("Classic Alarm", "/alarm.mp3");
         SOUND_FILES.put("Gentle Chime",  "/chime.mp3");
         SOUND_FILES.put("Future Alert",  "/future.mp3");
-        SOUND_FILES.put("System Beep",   "beep");       // Always works
+        SOUND_FILES.put("System Beep",   "beep");
     }
 
     public static Set<String> getSoundNames() {
         return SOUND_FILES.keySet();
     }
 
-    // Play the Loop (Actual Alarm)
-    // Updated playAlarm signature to accept loop setting
+    // --- PLAY ALARM (Called by Battery Checker) ---
     public static void playAlarm(String soundName, boolean shouldLoop) {
-        if (isAlarmPlaying) return; // Don't restart if already playing
+        // If user is previewing a sound, don't interrupt them with the alarm logic yet
+        if (isPreviewing) return;
 
-        String fileName = SOUND_FILES.getOrDefault(soundName, "beep");
+        if (isAlarmPlaying) return;
 
-        if (fileName.equals("beep")) {
-            playSystemBeep();
-            // System beep can't really loop continuously without a thread,
-            // so we just play it once per trigger.
-            isAlarmPlaying = true;
-            return;
-        }
-
-        try {
-            if (currentClip == null || !fileName.equals(currentClip.getSource())) {
-                loadClip(fileName);
-            }
-            if (currentClip != null) {
-                // THE NEW LOGIC
-                if (shouldLoop) {
-                    currentClip.setCycleCount(AudioClip.INDEFINITE);
-                } else {
-                    currentClip.setCycleCount(1);
-                }
-                currentClip.play();
-                isAlarmPlaying = true;
-            } else {
-                playSystemBeep();
-            }
-        } catch (Exception e) {
-            playSystemBeep();
-        }
+        startSound(soundName, shouldLoop ? AudioClip.INDEFINITE : 1);
+        isAlarmPlaying = true;
     }
 
-    // Preview (Play Once)
+    // --- PREVIEW SOUND (Called by User) ---
     public static void previewSound(String soundName) {
-        stopAlarm(); // Stop any running alarm first
+        // Force stop everything to start fresh
+        forceStop();
 
-        String fileName = SOUND_FILES.getOrDefault(soundName, "beep");
-        if (fileName.equals("beep")) {
-            playSystemBeep();
-            return;
-        }
+        isPreviewing = true; // Raise the flag!
+        startSound(soundName, AudioClip.INDEFINITE); // Loop it so it lasts 5 seconds
 
-        try {
-            loadClip(fileName);
-            if (currentClip != null) {
-                // CHANGE 1: Loop it indefinitely so it doesn't stop immediately
-                currentClip.setCycleCount(AudioClip.INDEFINITE);
-                currentClip.play();
-
-                // CHANGE 2: Stop it automatically after 3 seconds
-                new java.util.Timer().schedule(new java.util.TimerTask() {
-                    @Override
-                    public void run() {
-                        if (currentClip != null && currentClip.isPlaying()) {
-                            currentClip.stop();
-                        }
-                    }
-                }, 3000); //milliseconds
+        // Kill it after 5 seconds
+        previewTimer = new Timer();
+        previewTimer.schedule(new TimerTask() {
+            @Override
+            public void run() {
+                forceStop(); // Timer done, kill sound
             }
-        } catch (Exception e) {
-            playSystemBeep();
-        }
+        }, 5000);
     }
+
+    // --- STOP ALARM (Called by Battery Checker) ---
     public static void stopAlarm() {
+        // CRITICAL FIX: If we are previewing, IGNORE the battery checker's request to stop.
+        if (isPreviewing) return;
+
+        forceStop();
+    }
+
+    // Internal helper to actually stop sound
+    private static void forceStop() {
         isAlarmPlaying = false;
+        isPreviewing = false; // Lower the flag
+
+        if (previewTimer != null) {
+            previewTimer.cancel();
+            previewTimer = null;
+        }
+
         if (currentClip != null && currentClip.isPlaying()) {
             currentClip.stop();
         }
     }
 
-    private static void loadClip(String fileName) {
+    private static void startSound(String soundName, int cycleCount) {
+        String fileName = SOUND_FILES.getOrDefault(soundName, "beep");
+
+        if (fileName.equals("beep")) {
+            java.awt.Toolkit.getDefaultToolkit().beep();
+            return;
+        }
+
         try {
-            URL url = SoundManager.class.getResource(fileName);
-            if (url != null) {
-                currentClip = new AudioClip(url.toExternalForm());
+            // Reload if different sound
+            if (currentClip == null || !fileName.equals(currentClip.getSource())) {
+                URL url = SoundManager.class.getResource(fileName);
+                if (url != null) {
+                    currentClip = new AudioClip(url.toExternalForm());
+                }
+            }
+
+            if (currentClip != null) {
+                currentClip.setCycleCount(cycleCount);
+                currentClip.play();
             } else {
-                currentClip = null;
+                java.awt.Toolkit.getDefaultToolkit().beep();
             }
         } catch (Exception e) {
-            currentClip = null;
+            java.awt.Toolkit.getDefaultToolkit().beep();
         }
-    }
-
-    private static void playSystemBeep() {
-        java.awt.Toolkit.getDefaultToolkit().beep();
-        // Since system beep is instant, we simulate "playing" state for logic
-        isAlarmPlaying = true;
     }
 }
