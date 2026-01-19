@@ -6,12 +6,9 @@ import javafx.scene.chart.AreaChart;
 import javafx.scene.chart.NumberAxis;
 import javafx.scene.chart.XYChart;
 import javafx.scene.control.Label;
-import javafx.scene.control.ProgressIndicator;
 import javafx.scene.layout.*;
 import javafx.scene.paint.Color;
 import javafx.scene.shape.Circle;
-
-import java.util.Map;
 
 public class AnalyticsView {
 
@@ -63,8 +60,8 @@ public class AnalyticsView {
         VBox voltageCard = createStatCard("Rated Voltage", "Reading...", "Live Sensor Data", "#f85149");
         voltageLabel = (Label) voltageCard.getChildren().get(1);
 
-        // Temp is hard to get reliably in Java without Admin/Drivers,
-        // usually represented as "Thermal Status" or N/A in basic APIs.
+
+        // Temperature
         VBox tempCard = createStatCard("Thermal Status", "Normal", "System Nominal", "#2ea043");
 
         grid.add(cycleCard, 0, 2);
@@ -140,7 +137,6 @@ public class AnalyticsView {
     }
 
     private static VBox createGraphCard() {
-        // (Same graph code as before, simplified for brevity)
         Label title = new Label("Battery Level History (Last Hour)");
         title.setStyle("-fx-text-fill: #8b949e; -fx-font-weight: bold;");
 
@@ -154,7 +150,6 @@ public class AnalyticsView {
         areaChart.setStyle("-fx-background-color: transparent;");
 
         XYChart.Series<Number, Number> series = new XYChart.Series<>();
-        // In real version, we'd pull from HistoryManager. For now, static data.
         series.getData().add(new XYChart.Data<>(60, 85));
         series.getData().add(new XYChart.Data<>(30, 65));
         series.getData().add(new XYChart.Data<>(0, BatteryManager.getBatteryLevel()));

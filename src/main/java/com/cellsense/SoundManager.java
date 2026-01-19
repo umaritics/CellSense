@@ -13,7 +13,7 @@ public class SoundManager {
     private static AudioClip currentClip;
     private static boolean isAlarmPlaying = false;
 
-    // NEW: Protects the preview from being killed by the battery checker
+    //Protects the preview from being killed by the battery checker
     private static boolean isPreviewing = false;
     private static Timer previewTimer;
 

@@ -17,7 +17,7 @@ public class BatteryReportManager {
 
     // --- DATA MODELS ---
 
-    // NEW: Represents a single point on the graph
+    //Represents a single point on the graph
     public static class GraphPoint {
         public String timestamp; // ISO format: 2025-11-03T19:18:24
         public double percentage; // 0.0 to 100.0
@@ -105,7 +105,7 @@ public class BatteryReportManager {
                 reportFile = generateHtmlReport();
                 String htmlContent = readFileSafe(reportFile);
 
-                // 1. Parse Graph Data (NEW)
+                // 1. Parse Graph Data
                 parseDrainGraph(htmlContent, data.drainGraph);
 
                 // 2. Parse Tables
@@ -126,7 +126,7 @@ public class BatteryReportManager {
 
     // --- PARSING LOGIC ---
 
-    // NEW: Extracts the 'drainGraphData' JSON array from the script tag
+    //Extracts the 'drainGraphData' JSON array from the script tag
     private static void parseDrainGraph(String html, ObservableList<GraphPoint> list) {
         if (html == null) return;
 
