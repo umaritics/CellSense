@@ -9,6 +9,7 @@ import javafx.application.Application;
 import javafx.application.Platform;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
+import javafx.scene.Group;
 import javafx.scene.Scene;
 import javafx.scene.control.*;
 import javafx.scene.image.Image;
@@ -25,7 +26,8 @@ import java.awt.TrayIcon;
 
 public class App extends Application {
 
-    private BatteryRing batteryRing;
+    // Remove or comment out: private BatteryRing batteryRing;
+    private BatteryLiquid batteryLiquidRef;
     private ToggleSwitch alarmSwitch;
     private Label alarmStatusLabel;
     private Stage primaryStage;
@@ -33,6 +35,10 @@ public class App extends Application {
     private Label powerModeLabel;
     private boolean maxAlarmTriggered = false;
     private boolean minAlarmTriggered = false;
+    private BorderPane mainLayout;
+    private VBox dashboardView;
+    private VBox analyticsView;
+    private VBox historyView;
 
     @Override
     public void start(Stage stage) {
@@ -46,14 +52,15 @@ public class App extends Application {
         Application.setUserAgentStylesheet(new PrimerDark().getUserAgentStylesheet());
         setupSystemTray();
 
-        BorderPane mainLayout = new BorderPane();
+        mainLayout = new BorderPane();
         mainLayout.setStyle("-fx-background-color: #0d1117;");
+
+        // Initialize Dashboard View immediately
+        dashboardView = createDashboard();
 
         VBox sidebar = createSidebar();
         mainLayout.setLeft(sidebar);
-
-        VBox content = createDashboard();
-        mainLayout.setCenter(content);
+        mainLayout.setCenter(dashboardView);
 
         animateStartup();
         Timeline timeline = new Timeline(new KeyFrame(Duration.seconds(2), event -> checkBattery()));
@@ -79,21 +86,71 @@ public class App extends Application {
         senseText.setStyle("-fx-fill: white; -fx-font-weight: bold; -fx-font-size: 26px;");
         TextFlow logo = new TextFlow(cellText, senseText);
 
+        // NAVIGATION BUTTONS
         Button dashBtn = createNavButton("Dashboard", true);
         Button analyticsBtn = createNavButton("Analytics", false);
         Button historyBtn = createNavButton("History", false);
+
+        // ACTION: Switch Views
+        dashBtn.setOnAction(e -> {
+            updateNavStyles(dashBtn, analyticsBtn, historyBtn);
+            mainLayout.setCenter(dashboardView);
+        });
+
+        analyticsBtn.setOnAction(e -> {
+            updateNavStyles(analyticsBtn, dashBtn, historyBtn);
+            if (analyticsView == null) {
+                analyticsView = AnalyticsView.create();
+            }
+            mainLayout.setCenter(analyticsView);
+        });
+
+        historyBtn.setOnAction(e -> {
+            updateNavStyles(historyBtn, dashBtn, analyticsBtn);
+            if (historyView == null) {
+                historyView = HistoryView.create();
+            }
+            mainLayout.setCenter(historyView);
+        });
+        // --- MISSING DEFINITIONS FIXED HERE ---
+
+        // 1. Spacer (Pushes exit button to bottom)
         Region spacer = new Region();
         VBox.setVgrow(spacer, Priority.ALWAYS);
+
+        // 2. Exit Button
         Button exitBtn = new Button("Quit App");
         exitBtn.setMaxWidth(Double.MAX_VALUE);
         exitBtn.getStyleClass().add(Styles.DANGER);
         exitBtn.setOnAction(e -> {
-            if (SystemTray.isSupported()) SystemTray.getSystemTray().remove(SystemTray.getSystemTray().getTrayIcons()[0]);
-            Platform.exit(); System.exit(0);
+            if (SystemTray.isSupported()) {
+                // Remove icon to prevent it getting stuck in taskbar
+                TrayIcon[] icons = SystemTray.getSystemTray().getTrayIcons();
+                if (icons.length > 0) {
+                    SystemTray.getSystemTray().remove(icons[0]);
+                }
+            }
+            Platform.exit();
+            System.exit(0);
         });
 
-        sidebar.getChildren().addAll(logo, new Separator(), dashBtn, analyticsBtn, historyBtn, spacer, exitBtn);
+        // 3. Version Label
+        Label version = new Label("v0.2.0 Beta");
+        version.setStyle("-fx-text-fill: #8b949e; -fx-font-size: 12px;");
+        version.setAlignment(Pos.CENTER);
+        version.setMaxWidth(Double.MAX_VALUE);
+
+        // Add everything to sidebar
+        sidebar.getChildren().addAll(logo, new Separator(), dashBtn, analyticsBtn, historyBtn, spacer, exitBtn, version);
         return sidebar;
+    }
+
+    // Helper to toggle the "Active Blue" style on buttons
+    private void updateNavStyles(Button active, Button... others) {
+        active.setStyle("-fx-background-color: #1f6feb; -fx-text-fill: white; -fx-font-weight: bold;");
+        for (Button b : others) {
+            b.setStyle("-fx-background-color: transparent; -fx-text-fill: #8b949e;");
+        }
     }
 
     private Button createNavButton(String text, boolean isActive) {
@@ -111,31 +168,47 @@ public class App extends Application {
         headerTitle.setStyle("-fx-font-size: 28px; -fx-font-weight: 900; -fx-text-fill: white;");
 
         GridPane grid = new GridPane();
-        grid.setHgap(25);
-        grid.setVgap(25);
+        grid.setHgap(20); // Consistent gap
+        grid.setVgap(20);
         grid.setPadding(new Insets(10, 0, 0, 0));
 
-        batteryRing = new BatteryRing();
-        VBox ringCard = new VBox(batteryRing);
-        ringCard.setAlignment(Pos.CENTER);
-        ringCard.setPadding(new Insets(40));
-        ringCard.setMinSize(350, 350);
-        styleCard(ringCard);
+        // --- 1. SET UP COLUMNS (50% / 50%) ---
+        // This forces both cards to take equal width, filling the space perfectly
+        ColumnConstraints col1 = new ColumnConstraints();
+        col1.setPercentWidth(50);
+        ColumnConstraints col2 = new ColumnConstraints();
+        col2.setPercentWidth(50);
+        grid.getColumnConstraints().addAll(col1, col2);
 
+        // --- 2. THE LIQUID CARD ---
+        // We use the new Liquid Component
+        BatteryLiquid batteryLiquid = new BatteryLiquid();
+        // Save reference to update it later
+        this.batteryLiquidRef = batteryLiquid;
+
+        VBox liquidCard = new VBox(batteryLiquid);
+        liquidCard.setAlignment(Pos.CENTER);
+        liquidCard.setPadding(new Insets(20));
+        styleCard(liquidCard);
+        // Make it fill the grid cell height
+        GridPane.setVgrow(liquidCard, Priority.ALWAYS);
+
+        // --- 3. SETTINGS CARD ---
         VBox settingsCard = createSettingsCard();
-        settingsCard.setPrefWidth(400);
-        settingsCard.setPrefHeight(340);
+        GridPane.setVgrow(settingsCard, Priority.ALWAYS); // Match height
 
+        // --- 4. INFO CARDS ---
         VBox timeCard = createInfoCard("Time Remaining", "Calculating...", "Est. time until empty");
         timeRemainingLabel = (Label) timeCard.getChildren().get(1);
 
         VBox powerCard = createInfoCard("Power Status", "Battery Power", "Current Source");
         powerModeLabel = (Label) powerCard.getChildren().get(1);
 
-        grid.add(ringCard, 0, 0);
-        grid.add(settingsCard, 1, 0);
-        grid.add(timeCard, 0, 1);
-        grid.add(powerCard, 1, 1);
+        // --- 5. ADD TO GRID ---
+        grid.add(liquidCard, 0, 0);   // Top Left
+        grid.add(settingsCard, 1, 0); // Top Right
+        grid.add(timeCard, 0, 1);     // Bottom Left
+        grid.add(powerCard, 1, 1);    // Bottom Right
 
         alarmStatusLabel = new Label("");
         alarmStatusLabel.setStyle("-fx-text-fill: #f85149; -fx-font-weight: bold; -fx-font-size: 16px;");
@@ -275,15 +348,16 @@ public class App extends Application {
     }
 
     private void animateStartup() {
-        batteryRing.setProgress(0, false);
+        batteryLiquidRef.setProgress(0, false);
         new Timeline(new KeyFrame(Duration.millis(500), e -> checkBattery())).play();
     }
 
     private void checkBattery() {
         int level = BatteryManager.getBatteryLevel();
         boolean isPlugged = BatteryManager.isPluggedIn();
-        batteryRing.setProgress(level, isPlugged);
-
+        if (batteryLiquidRef != null) {
+            batteryLiquidRef.setProgress(level, isPlugged);
+        }
         // Update Info Cards...
         if (isPlugged) {
             powerModeLabel.setText("AC Power"); powerModeLabel.setStyle("-fx-text-fill: #2ea043; -fx-font-size: 24px; -fx-font-weight: bold;");
