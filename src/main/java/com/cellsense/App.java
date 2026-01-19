@@ -9,7 +9,6 @@ import javafx.application.Application;
 import javafx.application.Platform;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
-import javafx.scene.Group;
 import javafx.scene.Scene;
 import javafx.scene.control.*;
 import javafx.scene.image.Image;
@@ -18,15 +17,12 @@ import javafx.scene.text.Text;
 import javafx.scene.text.TextFlow;
 import javafx.stage.Stage;
 import javafx.util.Duration;
-import org.kordamp.ikonli.javafx.FontIcon;
-// ^ If you don't have icons yet, we'll use text buttons for now to avoid errors
 
 import java.awt.SystemTray;
 import java.awt.TrayIcon;
 
 public class App extends Application {
 
-    // Remove or comment out: private BatteryRing batteryRing;
     private BatteryLiquid batteryLiquidRef;
     private ToggleSwitch alarmSwitch;
     private Label alarmStatusLabel;
@@ -55,14 +51,15 @@ public class App extends Application {
         mainLayout = new BorderPane();
         mainLayout.setStyle("-fx-background-color: #0d1117;");
 
-        // Initialize Dashboard View immediately
         dashboardView = createDashboard();
 
-        VBox sidebar = createSidebar();
+        BorderPane sidebar = createSidebar();
         mainLayout.setLeft(sidebar);
         mainLayout.setCenter(dashboardView);
 
         animateStartup();
+
+        // Run check loop indefinitely
         Timeline timeline = new Timeline(new KeyFrame(Duration.seconds(2), event -> checkBattery()));
         timeline.setCycleCount(Timeline.INDEFINITE);
         timeline.play();
@@ -70,13 +67,77 @@ public class App extends Application {
         Scene scene = new Scene(mainLayout, 1000, 700);
         stage.setTitle("CellSense");
         stage.setScene(scene);
-        stage.show();
+
+        // FEATURE: Support starting minimized (for Auto-Start later)
+        if (!getParameters().getRaw().contains("--minimized")) {
+            stage.show();
+        }
     }
 
-    // --- SIDEBAR (Same as before) ---
-    private VBox createSidebar() {
-        VBox sidebar = new VBox(20);
-        sidebar.setPadding(new Insets(30, 20, 30, 20));
+    // --- OPTIMIZED BACKGROUND RUNNING LOGIC ---
+    private void checkBattery() {
+        int level = BatteryManager.getBatteryLevel();
+        boolean isPlugged = BatteryManager.isPluggedIn();
+
+        // 1. ALARM LOGIC (Always Runs - Very Light)
+        checkAlarms(level, isPlugged);
+
+        // 2. UI LOGIC (Only Runs if Window is Visible - Saves CPU)
+        if (primaryStage.isShowing()) {
+            updateUI(level, isPlugged);
+        }
+    }
+
+    private void updateUI(int level, boolean isPlugged) {
+        if (batteryLiquidRef != null) batteryLiquidRef.setProgress(level, isPlugged);
+
+        if (isPlugged) {
+            powerModeLabel.setText("AC Power");
+            powerModeLabel.setStyle("-fx-text-fill: #2ea043; -fx-font-size: 24px; -fx-font-weight: bold;");
+            timeRemainingLabel.setText("Charging...");
+        } else {
+            powerModeLabel.setText("Battery");
+            powerModeLabel.setStyle("-fx-text-fill: #f85149; -fx-font-size: 24px; -fx-font-weight: bold;");
+            timeRemainingLabel.setText("~" + (level * 2) + " mins");
+        }
+    }
+
+    private void checkAlarms(int level, boolean isPlugged) {
+        if (!PreferenceManager.isAlarmActive()) {
+            // If UI is showing, clear the status label
+            if(primaryStage.isShowing()) alarmStatusLabel.setText("");
+            SoundManager.stopAlarm();
+            return;
+        }
+
+        double maxLimit = PreferenceManager.getMaxLimit();
+        double minLimit = PreferenceManager.getMinLimit();
+
+        if (isPlugged && level >= maxLimit) {
+            if(primaryStage.isShowing()) alarmStatusLabel.setText("⚠ UNPLUG CHARGER NOW");
+            if (!maxAlarmTriggered) {
+                SoundManager.playAlarm(PreferenceManager.getMaxSound(), PreferenceManager.isMaxLoop());
+                if (!PreferenceManager.isMaxLoop()) maxAlarmTriggered = true;
+            }
+        } else if (!isPlugged && level <= minLimit) {
+            if(primaryStage.isShowing()) alarmStatusLabel.setText("⚠ LOW BATTERY - PLUG IN");
+            if (!minAlarmTriggered) {
+                SoundManager.playAlarm(PreferenceManager.getMinSound(), PreferenceManager.isMinLoop());
+                if (!PreferenceManager.isMinLoop()) minAlarmTriggered = true;
+            }
+        } else {
+            if(primaryStage.isShowing()) alarmStatusLabel.setText("");
+            SoundManager.stopAlarm();
+            maxAlarmTriggered = false;
+            minAlarmTriggered = false;
+        }
+    }
+
+    // --- LAYOUT CODE ---
+
+    private BorderPane createSidebar() {
+        BorderPane sidebar = new BorderPane();
+        sidebar.setPadding(new Insets(30, 20, 20, 20));
         sidebar.setPrefWidth(240);
         sidebar.setStyle("-fx-background-color: #010409; -fx-border-color: #30363d; -fx-border-width: 0 1 0 0;");
 
@@ -86,12 +147,10 @@ public class App extends Application {
         senseText.setStyle("-fx-fill: white; -fx-font-weight: bold; -fx-font-size: 26px;");
         TextFlow logo = new TextFlow(cellText, senseText);
 
-        // NAVIGATION BUTTONS
         Button dashBtn = createNavButton("Dashboard", true);
         Button analyticsBtn = createNavButton("Analytics", false);
         Button historyBtn = createNavButton("History", false);
 
-        // ACTION: Switch Views
         dashBtn.setOnAction(e -> {
             updateNavStyles(dashBtn, analyticsBtn, historyBtn);
             mainLayout.setCenter(dashboardView);
@@ -99,131 +158,92 @@ public class App extends Application {
 
         analyticsBtn.setOnAction(e -> {
             updateNavStyles(analyticsBtn, dashBtn, historyBtn);
-            if (analyticsView == null) {
-                analyticsView = AnalyticsView.create();
-            }
+            if (analyticsView == null) analyticsView = AnalyticsView.create();
             mainLayout.setCenter(analyticsView);
         });
 
         historyBtn.setOnAction(e -> {
             updateNavStyles(historyBtn, dashBtn, analyticsBtn);
-            if (historyView == null) {
-                historyView = HistoryView.create();
-            }
+            if (historyView == null) historyView = HistoryView.create();
             mainLayout.setCenter(historyView);
         });
-        // --- MISSING DEFINITIONS FIXED HERE ---
 
-        // 1. Spacer (Pushes exit button to bottom)
-        Region spacer = new Region();
-        VBox.setVgrow(spacer, Priority.ALWAYS);
+        VBox topSection = new VBox(20, logo, new Separator(), dashBtn, analyticsBtn, historyBtn);
+        sidebar.setTop(topSection);
 
-        // 2. Exit Button
         Button exitBtn = new Button("Quit App");
         exitBtn.setMaxWidth(Double.MAX_VALUE);
         exitBtn.getStyleClass().add(Styles.DANGER);
         exitBtn.setOnAction(e -> {
             if (SystemTray.isSupported()) {
-                // Remove icon to prevent it getting stuck in taskbar
                 TrayIcon[] icons = SystemTray.getSystemTray().getTrayIcons();
-                if (icons.length > 0) {
-                    SystemTray.getSystemTray().remove(icons[0]);
-                }
+                if (icons.length > 0) SystemTray.getSystemTray().remove(icons[0]);
             }
             Platform.exit();
             System.exit(0);
         });
 
-        // 3. Version Label
         Label version = new Label("v0.2.0 Beta");
         version.setStyle("-fx-text-fill: #8b949e; -fx-font-size: 12px;");
         version.setAlignment(Pos.CENTER);
         version.setMaxWidth(Double.MAX_VALUE);
 
-        // Add everything to sidebar
-        sidebar.getChildren().addAll(logo, new Separator(), dashBtn, analyticsBtn, historyBtn, spacer, exitBtn, version);
+        VBox bottomSection = new VBox(10, exitBtn, version);
+        sidebar.setBottom(bottomSection);
+
         return sidebar;
     }
 
-    // Helper to toggle the "Active Blue" style on buttons
-    private void updateNavStyles(Button active, Button... others) {
-        active.setStyle("-fx-background-color: #1f6feb; -fx-text-fill: white; -fx-font-weight: bold;");
-        for (Button b : others) {
-            b.setStyle("-fx-background-color: transparent; -fx-text-fill: #8b949e;");
-        }
-    }
-
-    private Button createNavButton(String text, boolean isActive) {
-        Button btn = new Button(text);
-        btn.setMaxWidth(Double.MAX_VALUE);
-        btn.setAlignment(Pos.CENTER_LEFT);
-        btn.getStyleClass().add(Styles.FLAT);
-        btn.setStyle(isActive ? "-fx-background-color: #1f6feb; -fx-text-fill: white; -fx-font-weight: bold;" : "-fx-text-fill: #c9d1d9;");
-        return btn;
-    }
-
-    // --- DASHBOARD ---
     private VBox createDashboard() {
         Label headerTitle = new Label("Battery Overview");
         headerTitle.setStyle("-fx-font-size: 28px; -fx-font-weight: 900; -fx-text-fill: white;");
 
         GridPane grid = new GridPane();
-        grid.setHgap(20); // Consistent gap
-        grid.setVgap(20);
-        grid.setPadding(new Insets(10, 0, 0, 0));
+        grid.setHgap(20);
+        grid.setVgap(15);
+        grid.setPadding(new Insets(5, 0, 0, 0));
 
-        // --- 1. SET UP COLUMNS (50% / 50%) ---
-        // This forces both cards to take equal width, filling the space perfectly
-        ColumnConstraints col1 = new ColumnConstraints();
-        col1.setPercentWidth(50);
-        ColumnConstraints col2 = new ColumnConstraints();
-        col2.setPercentWidth(50);
+        ColumnConstraints col1 = new ColumnConstraints(); col1.setPercentWidth(50);
+        ColumnConstraints col2 = new ColumnConstraints(); col2.setPercentWidth(50);
         grid.getColumnConstraints().addAll(col1, col2);
 
-        // --- 2. THE LIQUID CARD ---
-        // We use the new Liquid Component
         BatteryLiquid batteryLiquid = new BatteryLiquid();
-        // Save reference to update it later
         this.batteryLiquidRef = batteryLiquid;
-
         VBox liquidCard = new VBox(batteryLiquid);
         liquidCard.setAlignment(Pos.CENTER);
-        liquidCard.setPadding(new Insets(20));
+        liquidCard.setPadding(new Insets(15));
         styleCard(liquidCard);
-        // Make it fill the grid cell height
         GridPane.setVgrow(liquidCard, Priority.ALWAYS);
 
-        // --- 3. SETTINGS CARD ---
         VBox settingsCard = createSettingsCard();
-        GridPane.setVgrow(settingsCard, Priority.ALWAYS); // Match height
+        GridPane.setVgrow(settingsCard, Priority.ALWAYS);
 
-        // --- 4. INFO CARDS ---
         VBox timeCard = createInfoCard("Time Remaining", "Calculating...", "Est. time until empty");
         timeRemainingLabel = (Label) timeCard.getChildren().get(1);
 
         VBox powerCard = createInfoCard("Power Status", "Battery Power", "Current Source");
         powerModeLabel = (Label) powerCard.getChildren().get(1);
 
-        // --- 5. ADD TO GRID ---
-        grid.add(liquidCard, 0, 0);   // Top Left
-        grid.add(settingsCard, 1, 0); // Top Right
-        grid.add(timeCard, 0, 1);     // Bottom Left
-        grid.add(powerCard, 1, 1);    // Bottom Right
+        VBox tipsCard = createSmartTipsCard();
+
+        grid.add(liquidCard, 0, 0);
+        grid.add(settingsCard, 1, 0);
+        grid.add(timeCard, 0, 1);
+        grid.add(powerCard, 1, 1);
+        grid.add(tipsCard, 0, 2, 2, 1);
 
         alarmStatusLabel = new Label("");
         alarmStatusLabel.setStyle("-fx-text-fill: #f85149; -fx-font-weight: bold; -fx-font-size: 16px;");
         HBox statusBar = new HBox(alarmStatusLabel);
         statusBar.setAlignment(Pos.CENTER);
-        statusBar.setPadding(new Insets(20));
+        statusBar.setPadding(new Insets(5));
 
-        VBox content = new VBox(25, headerTitle, grid, statusBar);
-        content.setPadding(new Insets(40));
+        VBox content = new VBox(15, headerTitle, grid, statusBar);
+        content.setPadding(new Insets(20, 40, 20, 40));
         return content;
     }
 
-    // --- NEW SETTINGS CARD WITH TONE SELECTORS ---
     private VBox createSettingsCard() {
-        // Master Toggle
         alarmSwitch = new ToggleSwitch("Smart Alarms");
         alarmSwitch.setSelected(PreferenceManager.isAlarmActive());
         alarmSwitch.setStyle("-fx-font-size: 16px; -fx-font-weight: bold; -fx-text-fill: white;");
@@ -232,7 +252,6 @@ public class App extends Application {
             if (!val) SoundManager.stopAlarm();
         });
 
-        // --- UPPER LIMIT SECTION ---
         Label maxTitle = new Label("Stop Charging at");
         maxTitle.setStyle("-fx-text-fill: #8b949e; -fx-font-weight: bold;");
         Label maxVal = new Label((int)PreferenceManager.getMaxLimit() + "%");
@@ -244,10 +263,8 @@ public class App extends Application {
             PreferenceManager.setMaxLimit(val.doubleValue());
         });
 
-        // Upper Tone Selector
-        HBox maxToneBox = createToneSelector(true); // true = Upper
+        HBox maxToneBox = createToneSelector(true);
 
-        // --- LOWER LIMIT SECTION ---
         Label minTitle = new Label("Warn me at");
         minTitle.setStyle("-fx-text-fill: #8b949e; -fx-font-weight: bold;");
         Label minVal = new Label((int)PreferenceManager.getMinLimit() + "%");
@@ -259,10 +276,9 @@ public class App extends Application {
             PreferenceManager.setMinLimit(val.doubleValue());
         });
 
-        // Lower Tone Selector
-        HBox minToneBox = createToneSelector(false); // false = Lower
+        HBox minToneBox = createToneSelector(false);
 
-        VBox card = new VBox(15,
+        VBox card = new VBox(10,
                 new Label("Configuration"),
                 new Separator(),
                 alarmSwitch,
@@ -270,14 +286,12 @@ public class App extends Application {
                 new VBox(5, new HBox(10, minTitle, minVal), minSlider, minToneBox)
         );
         card.getChildren().get(0).setStyle("-fx-font-size: 18px; -fx-font-weight: bold; -fx-text-fill: white;");
-        card.setPadding(new Insets(25));
+        card.setPadding(new Insets(20));
         styleCard(card);
         return card;
     }
 
-    // Helper to create the Tone Selector + Loop Checkbox
     private HBox createToneSelector(boolean isUpper) {
-        // 1. Dropdown
         ComboBox<String> toneBox = new ComboBox<>();
         toneBox.getItems().addAll(SoundManager.getSoundNames());
         String savedTone = isUpper ? PreferenceManager.getMaxSound() : PreferenceManager.getMinSound();
@@ -286,19 +300,16 @@ public class App extends Application {
             if (isUpper) PreferenceManager.setMaxSound(toneBox.getValue());
             else PreferenceManager.setMinSound(toneBox.getValue());
         });
-        toneBox.setPrefWidth(140);
+        toneBox.setPrefWidth(120);
 
-        // 2. Play Button
         Button playBtn = new Button("▶");
         playBtn.getStyleClass().add(Styles.BUTTON_OUTLINED);
         playBtn.setOnAction(e -> SoundManager.previewSound(toneBox.getValue()));
 
-        // 3. Loop Checkbox
         CheckBox loopBox = new CheckBox("Loop");
         loopBox.setStyle("-fx-text-fill: white;");
         boolean savedLoop = isUpper ? PreferenceManager.isMaxLoop() : PreferenceManager.isMinLoop();
         loopBox.setSelected(savedLoop);
-
         loopBox.selectedProperty().addListener((obs, old, val) -> {
             if (isUpper) PreferenceManager.setMaxLoop(val);
             else PreferenceManager.setMinLoop(val);
@@ -313,10 +324,42 @@ public class App extends Application {
         Label titleLbl = new Label(title); titleLbl.setStyle("-fx-text-fill: #8b949e; -fx-font-size: 14px; -fx-font-weight: bold;");
         Label valueLbl = new Label(value); valueLbl.setStyle("-fx-text-fill: white; -fx-font-size: 24px; -fx-font-weight: bold;");
         Label subLbl = new Label(subtext); subLbl.setStyle("-fx-text-fill: #8b949e; -fx-font-size: 12px;");
-        VBox card = new VBox(10, titleLbl, valueLbl, subLbl);
-        card.setPadding(new Insets(20));
+        VBox card = new VBox(5, titleLbl, valueLbl, subLbl);
+        card.setPadding(new Insets(15));
         styleCard(card);
         GridPane.setHgrow(card, Priority.ALWAYS);
+        return card;
+    }
+
+    private VBox createSmartTipsCard() {
+        Label header = new Label("Smart Insights");
+        header.setStyle("-fx-font-weight: bold; -fx-font-size: 16px; -fx-text-fill: white;");
+
+        VBox contentBox = new VBox(8);
+        contentBox.setStyle("-fx-padding: 5 0 0 0;");
+
+        SmartTipsManager.generateTipsAsync().thenAccept(tips -> {
+            Platform.runLater(() -> {
+                contentBox.getChildren().clear();
+                for (SmartTipsManager.Tip tip : tips) {
+                    Label title = new Label(tip.title);
+                    title.setStyle("-fx-text-fill: " + tip.color + "; -fx-font-weight: bold; -fx-font-size: 14px;");
+                    Label desc = new Label(tip.description);
+                    desc.setStyle("-fx-text-fill: #8b949e; -fx-font-size: 12px;");
+                    desc.setWrapText(true);
+                    Label dot = new Label("●");
+                    dot.setStyle("-fx-text-fill: " + tip.color + "; -fx-font-size: 14px;");
+                    HBox row = new HBox(10, dot, new VBox(0, title, desc));
+                    row.setAlignment(Pos.CENTER_LEFT);
+                    contentBox.getChildren().add(row);
+                }
+            });
+        });
+
+        VBox card = new VBox(10, header, new Separator(), contentBox);
+        card.setPadding(new Insets(15));
+        styleCard(card);
+        GridPane.setColumnSpan(card, 2);
         return card;
     }
 
@@ -324,7 +367,20 @@ public class App extends Application {
         box.setStyle("-fx-background-color: #161b22; -fx-background-radius: 12; -fx-effect: dropshadow(three-pass-box, rgba(0,0,0,0.2), 10, 0, 0, 0);");
     }
 
-    // --- LOGIC ---
+    private void updateNavStyles(Button active, Button... others) {
+        active.setStyle("-fx-background-color: #1f6feb; -fx-text-fill: white; -fx-font-weight: bold;");
+        for (Button b : others) b.setStyle("-fx-background-color: transparent; -fx-text-fill: #8b949e;");
+    }
+
+    private Button createNavButton(String text, boolean isActive) {
+        Button btn = new Button(text);
+        btn.setMaxWidth(Double.MAX_VALUE);
+        btn.setAlignment(Pos.CENTER_LEFT);
+        btn.getStyleClass().add(Styles.FLAT);
+        btn.setStyle(isActive ? "-fx-background-color: #1f6feb; -fx-text-fill: white; -fx-font-weight: bold;" : "-fx-text-fill: #c9d1d9;");
+        return btn;
+    }
+
     private void setupSystemTray() {
         Platform.setImplicitExit(false);
         primaryStage.setOnCloseRequest(event -> { event.consume(); primaryStage.hide(); });
@@ -335,7 +391,6 @@ public class App extends Application {
                 TrayIcon trayIcon = new TrayIcon(image, "CellSense");
                 trayIcon.setImageAutoSize(true);
                 trayIcon.addActionListener(e -> Platform.runLater(() -> primaryStage.show()));
-
                 java.awt.PopupMenu popup = new java.awt.PopupMenu();
                 java.awt.MenuItem showItem = new java.awt.MenuItem("Show Dashboard");
                 showItem.addActionListener(e -> Platform.runLater(() -> primaryStage.show()));
@@ -352,66 +407,6 @@ public class App extends Application {
         new Timeline(new KeyFrame(Duration.millis(500), e -> checkBattery())).play();
     }
 
-    private void checkBattery() {
-        int level = BatteryManager.getBatteryLevel();
-        boolean isPlugged = BatteryManager.isPluggedIn();
-        if (batteryLiquidRef != null) {
-            batteryLiquidRef.setProgress(level, isPlugged);
-        }
-        // Update Info Cards...
-        if (isPlugged) {
-            powerModeLabel.setText("AC Power"); powerModeLabel.setStyle("-fx-text-fill: #2ea043; -fx-font-size: 24px; -fx-font-weight: bold;");
-            timeRemainingLabel.setText("Charging...");
-        } else {
-            powerModeLabel.setText("Battery"); powerModeLabel.setStyle("-fx-text-fill: #f85149; -fx-font-size: 24px; -fx-font-weight: bold;");
-            timeRemainingLabel.setText("~" + (level * 2) + " mins");
-        }
-
-        if (!alarmSwitch.isSelected()) {
-            alarmStatusLabel.setText("");
-            SoundManager.stopAlarm();
-            return;
-        }
-
-        double maxLimit = PreferenceManager.getMaxLimit();
-        double minLimit = PreferenceManager.getMinLimit();
-
-        // SCENARIO 1: Upper Limit Reached
-        if (isPlugged && level >= maxLimit) {
-            alarmStatusLabel.setText("⚠ UNPLUG CHARGER NOW");
-
-            // Only play if we haven't triggered it for this session yet
-            if (!maxAlarmTriggered) {
-                SoundManager.playAlarm(PreferenceManager.getMaxSound(), PreferenceManager.isMaxLoop());
-
-                // If looping is OFF, mark as triggered so it doesn't ring again in 2 seconds
-                if (!PreferenceManager.isMaxLoop()) {
-                    maxAlarmTriggered = true;
-                }
-            }
-        }
-        // SCENARIO 2: Lower Limit Reached
-        else if (!isPlugged && level <= minLimit) {
-            alarmStatusLabel.setText("⚠ LOW BATTERY - PLUG IN");
-
-            if (!minAlarmTriggered) {
-                SoundManager.playAlarm(PreferenceManager.getMinSound(), PreferenceManager.isMinLoop());
-
-                if (!PreferenceManager.isMinLoop()) {
-                    minAlarmTriggered = true;
-                }
-            }
-        }
-        // SCENARIO 3: Normal Range (Reset Triggers)
-        else {
-            alarmStatusLabel.setText("");
-            SoundManager.stopAlarm();
-
-            // Reset the triggers so they can ring again next time the condition is met
-            maxAlarmTriggered = false;
-            minAlarmTriggered = false;
-        }
-    }
     public static void main(String[] args) {
         launch();
     }
