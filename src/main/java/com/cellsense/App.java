@@ -68,6 +68,10 @@ public class App extends Application {
         stage.setTitle("CellSense");
         stage.setScene(scene);
 
+        //Auto Startup at Device Boot
+        if (!StartupManager.isStartupEnabled()) {
+            StartupManager.toggleStartup(true);
+        }
         // FEATURE: Support starting minimized (for Auto-Start later)
         if (!getParameters().getRaw().contains("--minimized")) {
             stage.show();
@@ -183,7 +187,7 @@ public class App extends Application {
             System.exit(0);
         });
 
-        Label version = new Label("v0.2.0 Beta");
+        Label version = new Label("v1.0 Beta");
         version.setStyle("-fx-text-fill: #8b949e; -fx-font-size: 12px;");
         version.setAlignment(Pos.CENTER);
         version.setMaxWidth(Double.MAX_VALUE);
@@ -300,7 +304,7 @@ public class App extends Application {
             if (isUpper) PreferenceManager.setMaxSound(toneBox.getValue());
             else PreferenceManager.setMinSound(toneBox.getValue());
         });
-        toneBox.setPrefWidth(120);
+        toneBox.setPrefWidth(160);
 
         Button playBtn = new Button("▶");
         playBtn.getStyleClass().add(Styles.BUTTON_OUTLINED);
